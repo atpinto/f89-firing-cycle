@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F89 Minimi — Firing Cycle</title>
+<style>
+  :root {
+    --bg: #0d0f12; --panel: #15181d; --line: #262b33; --text: #e7eaee; --muted: #8c95a1;
+    --accent: #e0683c; --accent-2: #f0b24a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: grid; grid-template-columns: minmax(0, 1fr) 330px; overflow: hidden;
+  }
+  .credit { display: flex; align-items: center; justify-content: center; gap: 10px; border-top: 1px solid var(--line); background: var(--panel);
+    padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px)); font-size: 11px; letter-spacing: .05em; color: var(--muted); margin-top: auto; }
+  .credit span { display: grid; gap: 2px; line-height: 1.3; }
+  .credit img { width: 44px; height: 44px; border-radius: 50%; flex: none; filter: invert(1); }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .webgl-object-shell {
+    position: relative; min-height: 0; overflow: hidden;
+    background: radial-gradient(120% 90% at 50% 35%, #2b3038 0%, #181b20 55%, #0b0d10 100%);
+  }
+  .webgl-object-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #overlay { position: absolute; inset: 0; pointer-events: none; }
+  #overlay svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #overlay line { stroke: rgba(231,234,238,.5); stroke-width: 1; }
+  #overlay circle { fill: #fff; }
+  .lbl {
+    position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 11.5px;
+    padding: 2px 7px; border-radius: 4px; background: rgba(13,15,18,.82); border: 1px solid rgba(255,255,255,.16);
+    will-change: transform;
+  }
+  .hint { position: absolute; left: 14px; top: 10px; color: var(--muted); font-size: 12px; pointer-events: none; }
+  .err { position: absolute; inset: 0; display: none; place-items: center; padding: 24px; text-align: center; color: var(--muted); pointer-events: none; }
+
+  .transport {
+    position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 10px 12px; border-radius: 10px;
+    background: rgba(13,15,18,.86); border: 1px solid var(--line); display: grid; gap: 8px;
+  }
+  .phase { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: baseline; }
+  .phase .pn { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .phase b { font-size: 15px; color: var(--accent-2); letter-spacing: .01em; }
+  .phase p { grid-column: 1 / -1; margin: 2px 0 0; color: #c9ced6; font-size: 13px; min-height: 2.9em; }
+  .scrub { position: relative; padding-top: 12px; }
+  .scrub input { width: 100%; margin: 0; accent-color: var(--accent); display: block; }
+  .ticks { position: absolute; left: 8px; right: 8px; top: 0; height: 10px; }
+  .ticks i { position: absolute; top: 2px; width: 2px; height: 8px; margin-left: -1px; background: #4a525e; border-radius: 1px; }
+  .ticks span { position: absolute; top: 4px; height: 4px; background: var(--accent-2); border-radius: 2px; opacity: .85; }
+  .trow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .btns { display: flex; gap: 6px; }
+  .btns button {
+    width: 40px; height: 36px; border-radius: 8px; border: 1px solid var(--line); background: #1b1f25;
+    display: grid; place-items: center;
+  }
+  .btns button:hover { background: #242a32; }
+  .btns button.play { width: 52px; background: var(--accent); border-color: #f08a60; color: #1a0d07; }
+  .btns svg { width: 15px; height: 15px; fill: currentColor; }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { padding: 7px 10px; background: transparent; border: 0; border-right: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .seg button:last-child { border-right: 0; }
+  .seg button[aria-pressed=true] { background: #2a313a; color: var(--text); font-weight: 600; }
+  .ammo { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ammo b { color: var(--text); font-size: 16px; }
+
+  aside {
+    background: var(--panel); border-left: 1px solid var(--line); padding: 16px 16px 20px;
+    overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+  }
+  h1 { font-size: 17px; margin: 0; }
+  .sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  section { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 9px; }
+  section > h2 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 600; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .row output { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .chip { padding: 7px 4px; border-radius: 8px; border: 1px solid var(--line); background: #1b1f25; color: var(--muted); font-size: 13px; }
+  .chip:hover { background: #242a32; color: var(--text); }
+  .chip[aria-pressed=true] { background: #2a313a; color: var(--text); font-weight: 600; }
+  ol.plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+  ol.plist button { width: 100%; text-align: left; display: flex; gap: 9px; align-items: center; padding: 4px 8px; border-radius: 6px; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
+  ol.plist button:hover { color: var(--text); }
+  ol.plist .n { width: 16px; text-align: right; font-variant-numeric: tabular-nums; font-size: 11.5px; }
+  ol.plist li.on button { background: #232931; color: var(--text); }
+  ol.plist li.on .n { color: var(--accent-2); }
+  .note { color: var(--muted); font-size: 12px; }
+  .dim { opacity: .45; pointer-events: none; }
+
+  @media (max-width: 860px) {
+    body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 62vh) minmax(0, 1fr); }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+    .hint { display: none; }
+    .transport { left: 6px; right: 6px; bottom: 6px; padding: 8px; gap: 6px; }
+    .phase p { display: none; }
+    .seg button { padding: 7px 8px; }
+    .lbl { font-size: 10.5px; padding: 1px 5px; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script src="f89-assets.js?v=1"></script>
+</head>
+<body>
+<div class="webgl-object-shell" id="shell">
+  <canvas class="webgl-object-canvas" data-webgl-3d-object></canvas>
+  <div id="overlay"><svg id="leaders"></svg></div>
+  <div class="hint">Drag to rotate · scroll or pinch to zoom · right-drag to pan</div>
+  <div class="err" id="err">Could not start WebGL or load three.js. Check your internet connection and reload.</div>
+
+  <div class="transport">
+    <div class="phase"><span class="pn" id="phaseNum"></span><b id="phaseTitle"></b><p id="phaseText"></p></div>
+    <div class="scrub">
+      <div class="ticks" id="ticks"></div>
+      <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Position in the firing cycle">
+    </div>
+    <div class="trow">
+      <div class="btns">
+        <button id="back" aria-label="Step back one phase" title="Step back one phase"><svg viewBox="0 0 16 16"><path d="M3 2h2v12H3zM14 2v12L6 8z"/></svg></button>
+        <button id="play" class="play" aria-label="Pause" title="Play / pause (Space)"><svg viewBox="0 0 16 16"><path id="playIcon" d="M4 2h3v12H4zM9 2h3v12H9z"/></svg></button>
+        <button id="fwd" aria-label="Step forward one phase" title="Step forward one phase"><svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg></button>
+      </div>
+      <div class="seg" id="speed" role="group" aria-label="Playback speed">
+        <button data-s="0.25" aria-pressed="false">¼×</button>
+        <button data-s="0.5" aria-pressed="false">½×</button>
+        <button data-s="1" aria-pressed="true">1×</button>
+        <button data-s="2" aria-pressed="false">2×</button>
+      </div>
+      <div class="ammo"><b id="ammoN">200</b> rounds</div>
+    </div>
+  </div>
+</div>
+
+<aside>
+  <div>
+    <h1>F89 Minimi</h1>
+    <div class="sub">Firing cycle — a photo exterior over a simplified teaching model of the open-bolt, belt-fed, gas-operated mechanism</div>
+  </div>
+
+  <section>
+    <h2>Body</h2>
+    <div class="seg" id="body" role="group" aria-label="Body">
+      <button data-b="solid" aria-pressed="false">Solid</button>
+      <button data-b="see" aria-pressed="true">See-through</button>
+    </div>
+    <div id="bodyLevel">
+      <div class="row"><label for="bodyT">See-through level</label><output id="bodyO"></output></div>
+      <input id="bodyT" type="range" min="10" max="100" value="66">
+    </div>
+  </section>
+
+  <section>
+    <h2>Camera</h2>
+    <div class="grid3" id="views">
+      <button class="chip" data-view="iso" aria-pressed="true">3/4</button>
+      <button class="chip" data-view="right" aria-pressed="false">Right</button>
+      <button class="chip" data-view="left" aria-pressed="false">Left</button>
+      <button class="chip" data-view="action" aria-pressed="false">Action</button>
+      <button class="chip" data-view="feed" aria-pressed="false">Belt feed</button>
+      <button class="chip" data-view="gas" aria-pressed="false">Gas system</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Parts</h2>
+    <div class="row"><span>Labels</span></div>
+    <div class="seg" id="labelMode" role="group" aria-label="Labels">
+      <button data-l="step" aria-pressed="true">Current step</button>
+      <button data-l="all" aria-pressed="false">All</button>
+      <button data-l="off" aria-pressed="false">Off</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Phases</h2>
+    <ol class="plist" id="plist"></ol>
+  </section>
+
+  <div class="note">Keys: <b>Space</b> play/pause, <b>←</b> <b>→</b> step one phase. The internal parts are approximate and for illustration only. The belt box and bipod are modelled; the rest of the exterior is built from a photo.</div>
+  <footer class="credit">
+    <img src="badge.png" alt="2HB D Coy 1 PL badge">
+    <span><span>Created by LT Armando Teixeira Pinto</span><span>2HB D-COY 1 PL</span></span>
+  </footer>
+</aside>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+// Units: 1 = 1 cm. +x muzzle, +y up, +z the gun's right side. Bore axis on y = 0, breech face (locked bolt face) at x = 0.
+// The belt feeds from the gun's left (-z) and empty links leave to the right.
+const $ = (id) => document.getElementById(id);
+const canvas = document.querySelector("[data-webgl-3d-object]");
+const shellEl = $("shell");
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (t) => { t = clamp(t); return t * t * (3 - 2 * t); };
+const bump = (t, a, b, c) => t <= a ? 0 : t < b ? smooth((t - a) / (b - a)) : 1 - smooth((t - b) / (c - b));
+const mod = (a, n) => ((a % n) + n) % n;
+
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); }
+catch (e) { $("err").style.display = "grid"; throw e; }
+renderer.setClearColor(0x000000, 0);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envTex = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+scene.environment = envTex;
+
+const camera = new THREE.PerspectiveCamera(30, 1, 1, 1200);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 12; controls.maxDistance = 480;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+const key = new THREE.DirectionalLight(0xffffff, 2.3);
+key.position.set(30, 80, 60); key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -75, right: 75, top: 50, bottom: -50, near: 10, far: 260 });
+key.shadow.bias = -0.0008; key.shadow.normalBias = 0.05;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x8fc4ff, 0.8);
+rim.position.set(-50, 20, -45); scene.add(rim);
+
+const GROUND_Y = -30.6;
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.ShadowMaterial({ opacity: 0.32 }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = GROUND_Y; ground.receiveShadow = true; scene.add(ground);
+
+const gun = new THREE.Group(); scene.add(gun);
+
+// ---------- materials ----------
+const std = (o) => new THREE.MeshStandardMaterial(o);
+const part = (color, o = {}) => std(Object.assign({ color, metalness: 0.85, roughness: 0.36 }, o));
+const shellMat = (color, o = {}) => std(Object.assign({ color, roughness: 0.62, metalness: 0.35, envMapIntensity: 0.6, side: THREE.DoubleSide }, o));
+const M = {
+  photo: std({ color: 0xffffff, roughness: 0.78, metalness: 0.06, envMapIntensity: 0.3 }),
+  barrel: std({ color: 0x1b1c1f, roughness: 0.4, metalness: 0.8, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }),
+  steel: shellMat(0x4a4d50, { metalness: 0.7, roughness: 0.45 }), // bipod
+  box: shellMat(0x3b4032, { metalness: 0.05, roughness: 0.8 }),   // belt box
+  edge: new THREE.LineBasicMaterial({ color: 0xaab4c0, transparent: true, opacity: 0.32, depthWrite: false }),
+  slide: part(0x5d6268, { roughness: 0.42 }),
+  bolt: part(0xb9bec4, { roughness: 0.25, metalness: 0.95 }),
+  rod: part(0xa9aeb4, { roughness: 0.28, metalness: 0.95 }),
+  spring: part(0x9aa0a6, { roughness: 0.35 }),
+  piston: part(0x8d9399, { roughness: 0.3 }),
+  pin: part(0xd5d9dd, { roughness: 0.2, metalness: 1 }),
+  sear: part(0xd9a441, { metalness: 0.5, roughness: 0.45 }),
+  trigger: part(0xc98a2b, { metalness: 0.4, roughness: 0.5 }),
+  feed: part(0x5fa8a0, { metalness: 0.5, roughness: 0.45 }),
+  steelDark: std({ color: 0x3c4046, metalness: 0.8, roughness: 0.45 }),
+  link: std({ color: 0x2a2c2f, metalness: 0.8, roughness: 0.5, side: THREE.DoubleSide }),
+  linkSpent: std({ color: 0x2a2c2f, metalness: 0.8, roughness: 0.5, side: THREE.DoubleSide, transparent: true }),
+  caseLive: part(0xc9a24a, { metalness: 0.95, roughness: 0.28, side: THREE.DoubleSide }),
+  caseSpent: part(0xc9a24a, { metalness: 0.95, roughness: 0.28, side: THREE.DoubleSide, transparent: true }),
+  brass: std({ color: 0xc9a24a, metalness: 0.95, roughness: 0.28, side: THREE.DoubleSide }),
+  copper: std({ color: 0xb46a3c, metalness: 0.9, roughness: 0.33, side: THREE.DoubleSide }),
+};
+const SHELL_MATS = [M.steel, M.box];
+const glow = (color) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+
+// ---------- geometry helpers ----------
+const shellMeshes = [], edgeLines = [];
+function add(m, parent) {
+  parent.add(m);
+  if (SHELL_MATS.includes(m.material)) {          // exterior: drawn after the mechanism, outlined when see-through
+    m.castShadow = true; m.renderOrder = 5; shellMeshes.push(m);
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 35), M.edge); e.renderOrder = 6; m.add(e); edgeLines.push(e);
+  }
+  return m;
+}
+function box(x0, x1, y0, y1, z0, z1, mat, parent = gun) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), mat);
+  m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); return add(m, parent);
+}
+function cylX(x0, x1, rBack, rFront, mat, parent = gun, y = 0, z = 0, seg = 28) {
+  const g = new THREE.CylinderGeometry(rFront, rBack, x1 - x0, seg); g.rotateZ(-Math.PI / 2);
+  const m = new THREE.Mesh(g, mat); m.position.set((x0 + x1) / 2, y, z); return add(m, parent);
+}
+function cylZ(r, len, mat, parent, x = 0, y = 0, z = 0) {
+  const g = new THREE.CylinderGeometry(r, r, len, 20); g.rotateX(Math.PI / 2);
+  const m = new THREE.Mesh(g, mat); m.position.set(x, y, z); return add(m, parent);
+}
+function rodBetween(a, b, r, mat, parent = gun) {
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 14), mat);
+  m.position.copy(A).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); return add(m, parent);
+}
+function sideShape(pts, z0, z1, mat, parent = gun) { // outline in the x-y plane, extruded across the gun
+  if (THREE.ShapeUtils.isClockWise(pts.map(([x, y]) => new THREE.Vector2(x, y)))) pts = pts.slice().reverse();
+  const s = new THREE.Shape(); pts.forEach(([x, y], i) => i ? s.lineTo(x, y) : s.moveTo(x, y)); s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: z1 - z0, bevelEnabled: false }); g.translate(0, 0, z0);
+  return add(new THREE.Mesh(g, mat), parent);
+}
+function latheX(pts, seg = 28) { // pts: [x, r]
+  const g = new THREE.LatheGeometry(pts.map(([x, r]) => new THREE.Vector2(r, x)), seg); g.rotateZ(-Math.PI / 2); return g;
+}
+function helixGeo(turns, r, tube) { // unit length along +x
+  const pts = [], n = turns * 14;
+  for (let i = 0; i <= n; i++) { const t = i / n, a = t * turns * Math.PI * 2; pts.push(new THREE.Vector3(t, r * Math.cos(a), r * Math.sin(a))); }
+  return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), n, tube, 6);
+}
+const unitX = (r) => { const g = new THREE.CylinderGeometry(r, r, 1, 16, 1, true); g.rotateZ(-Math.PI / 2); g.translate(0.5, 0, 0); return g; };
+
+// ---------- exterior: relief mesh built from the right-side photo and its depth map ----------
+// See source/build_relief.py. The same photo is mirrored onto the left half.
+const GAS_Y = -3.05, PORT_X = 26.5, MUZZLE_X = 50.4;
+const photoShell = new THREE.Mesh(new THREE.BufferGeometry(), M.photo);
+photoShell.castShadow = true; photoShell.renderOrder = 5; photoShell.visible = false; gun.add(photoShell);
+let shellReady = false;
+const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+Promise.all([loadImg(window.F89_ASSETS.tex), loadImg(window.F89_ASSETS.depth)]).then(([texImg, depthImg]) => {
+  const { W, H, cm, zMax, breechPx, axisPx } = window.F89_ASSETS;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g2 = c.getContext("2d", { willReadFrequently: true }); g2.drawImage(depthImg, 0, 0, W, H);
+  const px = g2.getImageData(0, 0, W, H).data;
+  const idx = new Int32Array(W * H).fill(-1), pos = [], uv = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const v = px[(y * W + x) * 4]; if (!v) continue;
+    idx[y * W + x] = pos.length / 3;
+    pos.push((x + 0.5 - breechPx) * cm, -(y + 0.5 - axisPx) * cm, (v - 1) / 254 * zMax);
+    uv.push((x + 0.5) / W, 1 - (y + 0.5) / H);
+  }
+  const n = pos.length / 3; // mirror the right half to make the left half
+  for (let i = 0; i < n; i++) { pos.push(pos[3 * i], pos[3 * i + 1], -pos[3 * i + 2]); uv.push(uv[2 * i], uv[2 * i + 1]); }
+  const ind = [], tri = (a, b, c) => { ind.push(a, b, c, c + n, b + n, a + n); };
+  for (let y = 0; y < H - 1; y++) for (let x = 0; x < W - 1; x++) {
+    const a = idx[y * W + x], b = idx[y * W + x + 1], c = idx[(y + 1) * W + x], d = idx[(y + 1) * W + x + 1];
+    const A = a >= 0, B = b >= 0, C = c >= 0, D = d >= 0;
+    if (A && B && C && D) { tri(a, c, b); tri(b, c, d); }
+    else if (A && B && C) tri(a, c, b);
+    else if (B && C && D) tri(b, c, d);
+    else if (A && C && D) tri(a, c, d);
+    else if (A && B && D) tri(a, d, b);
+  }
+  const geo = photoShell.geometry;
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(new THREE.BufferAttribute(new Uint32Array(ind), 1));
+  geo.computeVertexNormals(); geo.computeBoundingSphere();
+  // Faces that point up or down would smear one row of the photo across the whole top or bottom, so they are toned down.
+  const nrm = geo.attributes.normal, col = new Float32Array(nrm.count * 3);
+  for (let i = 0; i < nrm.count; i++) { const c = 1 - 0.5 * smooth((Math.abs(nrm.getY(i)) - 0.45) / 0.4); col[3 * i] = col[3 * i + 1] = col[3 * i + 2] = c; }
+  geo.setAttribute("color", new THREE.BufferAttribute(col, 3)); M.photo.vertexColors = true;
+  const tex = new THREE.Texture(texImg); tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); tex.needsUpdate = true;
+  M.photo.map = tex; M.photo.needsUpdate = true;
+  shellReady = true; syncBody();
+}).catch(() => { $("err").textContent = "The photo body could not be decoded."; $("err").style.display = "grid"; });
+
+// parts the photo does not show: belt box and bipod (modelled), and a liner so the bore and gas cylinder stay visible
+box(-10.5, -0.8, -16, -6.3, -6.5, 2.2, M.box);                                    // 200-round belt box
+for (const s of [1, -1]) {
+  rodBetween([23.6, -5.4, s * 1.0], [22.2, GROUND_Y + 0.5, s * 10], 0.42, M.steel);
+  box(21, 23.4, GROUND_Y, GROUND_Y + 0.5, s * 10 - 0.9, s * 10 + 0.9, M.steel);
+}
+{
+  const b = new THREE.Mesh(latheX([[-1.2, 1.2], [0, 1.2], [0, 1.05], [6, 1.05], [8, 0.9], [MUZZLE_X - 3.5, 0.8]]), M.barrel); b.renderOrder = 1; gun.add(b);
+  cylX(1, 28, 0.85, 0.85, M.barrel, gun, GAS_Y).renderOrder = 1;
+}
+
+// ---------- operating group: slide + piston (one piece), bolt ----------
+// d = how far the slide is behind its fully forward position. The bolt only starts to move once the slide has gone FREE.
+const STROKE = 14.8, SEAR_D = 13.9, FREE = 1.6, DWELL = 0.4, BOLT_LEN = 6.0;
+const slide = new THREE.Group(); gun.add(slide);
+box(-9.5, 0.5, -1.9, -1.2, -1.0, 1.0, M.slide, slide);
+box(-1.6, 0.5, -4.2, -1.2, -1.0, 1.0, M.slide, slide);                  // front block: piston joint, spring seat, sear notch
+box(-7.2, -0.6, -1.2, -0.85, -0.6, 0.6, M.slide, slide);                // bolt cradle
+box(-7.2, -BOLT_LEN - 0.05, -1.2, 0.5, -0.55, 0.55, M.slide, slide);    // firing pin post
+box(-5.0, -2.6, -1.0, -0.4, 0.6, 0.78, M.steelDark, slide);             // cam
+cylX(-BOLT_LEN - 0.05, 0.12, 0.13, 0.13, M.pin, slide, 0, 0, 12);       // firing pin, fixed to the slide
+cylX(0.5, 24.6, 0.42, 0.42, M.piston, slide, GAS_Y, 0, 18);             // piston rod
+cylX(24.6, 25.9, 0.68, 0.68, M.piston, slide, GAS_Y, 0, 20);            // piston head
+const bolt = new THREE.Group(); gun.add(bolt);
+cylX(-BOLT_LEN, 0, 0.72, 0.72, M.bolt, bolt);
+for (let i = 0; i < 2; i++) { const a = i * Math.PI + Math.PI / 2, l = box(-0.7, 0, -0.2, 0.2, -0.2, 0.2, M.bolt, bolt); l.position.set(-0.35, Math.cos(a) * 0.86, Math.sin(a) * 0.86); l.rotation.x = a; }
+box(-1.3, 0, -0.12, 0.12, 0.62, 0.8, M.steelDark, bolt);                // extractor
+box(-0.9, 0, 0.7, 1.45, -0.3, 0.3, M.bolt, bolt);                       // feed lug
+{ const r = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.5, 16), M.bolt); r.position.set(-3.6, 1.45, 0); bolt.add(r); } // feed roller
+// return spring on its guide rod, between the buffer and the slide
+const BUF_X = -24.4, SPRING_SEAT = -1.6;
+box(-29.6, BUF_X, -4.2, -1.3, -0.9, 0.9, M.steelDark);
+cylX(BUF_X, -2, 0.14, 0.14, M.rod, gun, GAS_Y, 0, 10);
+const retSpring = new THREE.Mesh(helixGeo(26, 0.42, 0.055), M.spring); retSpring.position.set(BUF_X, GAS_Y, 0); gun.add(retSpring);
+
+// ---------- trigger and sear ----------
+const SEAR_P = [-15.8, -4.85], SEAR_DROP = 0.27, TRIG_P = [-14.0, -6.5];
+const sear = new THREE.Group(); sear.position.set(SEAR_P[0], SEAR_P[1], 0); gun.add(sear);
+box(-0.3, 2.95, -0.2, 0.25, -0.4, 0.4, M.sear, sear);
+box(2.45, 2.95, 0.25, 1.1, -0.4, 0.4, M.sear, sear);                    // sear nose
+cylZ(0.2, 2.4, M.steelDark, sear);
+const trig = new THREE.Group(); trig.position.set(TRIG_P[0], TRIG_P[1], 0); gun.add(trig);
+box(-0.3, 0.3, -3.4, 0.2, -0.35, 0.35, M.trigger, trig);
+box(-0.9, 0.3, 0.2, 1.5, -0.35, 0.35, M.trigger, trig);                 // arm that works the sear
+cylZ(0.2, 2.4, M.steelDark, trig);
+
+// ---------- cartridges, links and the belt ----------
+const caseGeo = latheX([[0, 0], [0, 0.47], [0.12, 0.47], [0.16, 0.4], [0.28, 0.4], [0.34, 0.47], [3.55, 0.47], [3.95, 0.32], [4.47, 0.32], [4.47, 0.27]], 18);
+const bulletGeo = latheX([[4.2, 0], [4.2, 0.285], [4.85, 0.285], [5.2, 0.24], [5.5, 0.15], [5.7, 0.05], [5.73, 0]], 18);
+function makeRound(caseMat) { const g = new THREE.Group(); g.add(new THREE.Mesh(caseGeo, caseMat)); const b = new THREE.Mesh(bulletGeo, M.copper); g.add(b); g.userData.bullet = b; return g; }
+const live = makeRound(M.caseLive); gun.add(live);
+const spent = new THREE.Mesh(caseGeo, M.caseSpent); spent.visible = false; gun.add(spent);
+const shot = new THREE.Mesh(bulletGeo, M.copper); shot.visible = false; gun.add(shot);
+
+const TRAY_Y = 1.7, TRAY_X = -7.0, PITCH = 1.45, N_BELT = 14, CAP = 200;
+function beltAt(s) { // s = distance along the belt from the feed position, back toward the box. Returns [y, z, angle].
+  const flat = 2.4, R = 1.3, arc = R * Math.PI / 2;
+  if (s <= flat) return [TRAY_Y, -s, 0];
+  if (s <= flat + arc) { const a = (s - flat) / R; return [TRAY_Y - R + R * Math.cos(a), -flat - R * Math.sin(a), a]; }
+  return [TRAY_Y - R - (s - flat - arc), -flat - R, Math.PI / 2];
+}
+function makeLink(mat) {
+  const g = new THREE.Group();
+  const ring = new THREE.CylinderGeometry(0.55, 0.55, 1.3, 16, 1, true, 0.6, Math.PI * 2 - 1.2); ring.rotateZ(-Math.PI / 2);
+  const r = new THREE.Mesh(ring, mat); r.position.x = 2.2; g.add(r);
+  const tab = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.1, PITCH * 0.62), mat); tab.position.set(2.2, 0.5, -PITCH / 2); g.add(tab);
+  return g;
+}
+const beltRounds = [], beltLinks = [];
+for (let i = 0; i < N_BELT; i++) { const r = makeRound(M.brass); gun.add(r); beltRounds.push(r); const l = makeLink(M.link); gun.add(l); beltLinks.push(l); }
+const usedLink = makeLink(M.linkSpent); gun.add(usedLink);
+
+// feed lever and pawl in the feed cover: swung by the roller on the bolt
+const LEVER_P = [-11.5, 3.0], LEVER_LEN = 9.5, PAWL_OFF = 0.6;
+const lever = new THREE.Group(); lever.position.set(LEVER_P[0], LEVER_P[1], 0); gun.add(lever);
+box(-0.4, LEVER_LEN, -0.15, 0.15, -0.3, 0.3, M.feed, lever);
+box(LEVER_LEN - 0.9, LEVER_LEN, -0.95, -0.15, -0.3, 0.3, M.feed, lever);  // feed pawl
+{ const p = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.7, 14), M.steelDark); lever.add(p); }
+
+// ---------- effects ----------
+const GAS_COL = 0xff7a3d;
+const muzzle = new THREE.Group(); muzzle.position.set(MUZZLE_X + 0.3, 0, 0); gun.add(muzzle);
+{ const c = new THREE.Mesh(new THREE.ConeGeometry(1.8, 8, 16, 1, true), glow(0xffb347)); c.rotation.z = Math.PI / 2; c.position.x = 3.6; muzzle.add(c);
+  muzzle.add(new THREE.Mesh(new THREE.SphereGeometry(1.0, 16, 12), glow(0xffe2a0))); }
+const muzzleLight = new THREE.PointLight(0xffb060, 0, 70); muzzleLight.position.set(MUZZLE_X + 1.5, 0, 0); gun.add(muzzleLight);
+const primer = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 10), glow(0xffd27a)); primer.position.set(0.4, 0, 0); gun.add(primer);
+const boreGas = new THREE.Mesh(unitX(0.3), glow(GAS_COL)); boreGas.position.set(4.4, 0, 0); gun.add(boreGas);
+const portGas = new THREE.Mesh(new THREE.SphereGeometry(0.8, 12, 10), glow(GAS_COL)); portGas.position.set(PORT_X, GAS_Y / 2, 0); gun.add(portGas);
+const cylGas = new THREE.Mesh(unitX(0.6), glow(GAS_COL)); cylGas.position.set(0, GAS_Y, 0); gun.add(cylGas);
+for (const m of [boreGas, portGas, cylGas, primer]) m.renderOrder = 7;
+
+// ---------- the firing cycle as one timeline ----------
+// Everything that moves is a pure function of cycle time t in [0, 1). Nothing is stored between frames except t itself,
+// so pausing, changing speed, stepping and scrubbing can never leave a part out of place.
+const PHASES = [
+  { s: 0.00, title: "Trigger pull", parts: ["trigger", "sear", "slide"],
+    text: "The gun waits with the bolt held to the rear: it fires from an open bolt. Pressing the trigger lowers the sear out of its notch under the slide." },
+  { s: 0.07, title: "Feeding", parts: ["spring", "bolt", "belt"],
+    text: "The return spring drives the slide, piston and bolt forward. The feed lug on top of the bolt catches the round waiting in the feed tray and pushes it forward out of its link." },
+  { s: 0.20, title: "Chambering", parts: ["case", "bolt"],
+    text: "The round is guided down and forward into the chamber. The extractor snaps over the rim as the bolt closes on it." },
+  { s: 0.30, title: "Locking", parts: ["bolt", "slide"],
+    text: "The bolt stops against the barrel. The slide keeps moving and its cam turns the bolt, so the locking lugs engage in the barrel extension." },
+  { s: 0.36, title: "Firing", parts: ["pin", "slide", "case"],
+    text: "The slide's last movement carries the firing pin through the bolt and onto the primer. The propellant ignites." },
+  { s: 0.40, title: "Bullet travel", parts: ["bullet", "case", "bolt"],
+    text: "Expanding gas drives the bullet down the barrel. The bolt stays locked while the pressure is high." },
+  { s: 0.48, title: "Gas tapping", parts: ["gas", "reg", "piston"],
+    text: "The bullet passes the gas port. Gas flows through the regulator into the cylinder under the barrel and drives the long-stroke piston, which is one piece with the slide, to the rear." },
+  { s: 0.55, title: "Unlocking", parts: ["slide", "bolt"],
+    text: "The slide moves back a short way on its own while the bullet leaves and the pressure drops. Its cam then turns the bolt out of lock." },
+  { s: 0.61, title: "Extraction", parts: ["bolt", "case"],
+    text: "Bolt and slide travel back together. The extractor pulls the empty case out of the chamber." },
+  { s: 0.68, title: "Ejection", parts: ["case", "bolt", "link"],
+    text: "As the case clears the chamber the spring-loaded ejector in the bolt face throws it out of the ejection port, low on the right side." },
+  { s: 0.75, title: "Belt feed", parts: ["lever", "pawl", "belt", "link", "buffer"],
+    text: "The roller on the bolt swings the feed lever in the feed cover. The feed pawl drags the belt across one place: the next round arrives in the tray and the empty link falls out to the right. The slide meets the buffer." },
+  { s: 0.88, title: "Sear engagement", parts: ["trigger", "sear", "slide", "spring"],
+    text: "With the trigger released the sear rises and catches the slide, holding the bolt open on a compressed spring. Keep the trigger pressed instead and the slide runs straight forward again: the gun fires automatic only." },
+];
+const T_GO = 0.07, T_FIRE = 0.36, T_BUL0 = 0.375, T_PORT = 0.48, T_MUZ = 0.53, T_FEED0 = 0.72, T_FEED1 = 0.84, T_REL = 0.88;
+const BASE_SECONDS = 9; // one cycle at 1x
+
+function track(keys) { // monotone cubic through [t, value] keys: smooth, and never overshoots a key
+  const n = keys.length, xs = keys.map((k) => k[0]), ys = keys.map((k) => k[1]), d = [], m = new Array(n).fill(0);
+  for (let i = 0; i < n - 1; i++) d[i] = (ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]);
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : 2 / (1 / d[i - 1] + 1 / d[i]);
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  return (x) => {
+    if (x <= xs[0]) return ys[0]; if (x >= xs[n - 1]) return ys[n - 1];
+    let i = 0; while (x > xs[i + 1]) i++;
+    const h = xs[i + 1] - xs[i], u = (x - xs[i]) / h, u2 = u * u, u3 = u2 * u;
+    return (2 * u3 - 3 * u2 + 1) * ys[i] + (u3 - 2 * u2 + u) * h * m[i] + (-2 * u3 + 3 * u2) * ys[i + 1] + (u3 - u2) * h * m[i + 1];
+  };
+}
+const slideD = track([[0, SEAR_D], [T_GO, SEAR_D], [0.14, FREE - TRAY_X], [0.20, 5.6], [0.30, FREE], [T_FIRE, 0], [T_PORT, 0],
+  [0.55, 0.9], [0.61, FREE], [0.69, 7.8], [0.77, 12.6], [0.83, STROKE], [T_REL, STROKE], [0.95, SEAR_D], [1, SEAR_D]]);
+const solve = (f, target, a, b) => { const up = f(b) > f(a); for (let i = 0; i < 40; i++) { const m = (a + b) / 2; if ((f(m) < target) === up) a = m; else b = m; } return (a + b) / 2; };
+const EJECT_BF = -6.2;                                                  // bolt-face position where the case is thrown clear
+const T_STRIP = solve(slideD, FREE - TRAY_X, T_GO, 0.20);               // feed lug reaches the round in the tray
+const T_EJECT = solve(slideD, FREE - EJECT_BF, 0.61, 0.83);
+const BUL_RUN = MUZZLE_X - 4.2;                                         // bullet travel until its base clears the muzzle
+const BUL_POW = Math.log((PORT_X - 4.2) / BUL_RUN) / Math.log((T_PORT - T_BUL0) / (T_MUZ - T_BUL0));
+
+const S = {};
+function pose(t, k) {
+  const d = slideD(t);
+  S.t = t; S.d = d;
+  S.bf = -Math.max(0, d - FREE);
+  S.boltRot = 0.5 * clamp((d - DWELL) / (FREE - DWELL));
+  S.pull = t < T_GO ? smooth(t / 0.06) : t < T_REL ? 1 : 1 - smooth((t - T_REL) / 0.04);
+  S.prim = bump(t, T_FIRE + 0.004, T_FIRE + 0.014, T_FIRE + 0.05);
+  // bullet and gas
+  const u = (t - T_BUL0) / (T_MUZ - T_BUL0);
+  S.bulletOn = t >= T_BUL0 && t < 0.62;
+  S.bx = u <= 0 ? 0 : u < 1 ? BUL_RUN * Math.pow(u, BUL_POW) : BUL_RUN * (1 + BUL_POW * (u - 1));
+  S.bore = smooth((t - T_BUL0) / 0.02) * (1 - smooth((t - T_MUZ) / 0.09));
+  S.gas = bump(t, T_PORT, T_PORT + 0.02, T_PORT + 0.14);
+  S.flash = bump(t, T_MUZ, T_MUZ + 0.012, T_MUZ + 0.07);
+  S.kick = bump(t, T_MUZ, T_MUZ + 0.02, T_MUZ + 0.14);
+  // belt: pulled across one place on the rearward stroke; the lever swings back on the forward stroke
+  S.feed = smooth((t - T_FEED0) / (T_FEED1 - T_FEED0));
+  S.lever = t < T_GO ? 1 : t < 0.30 ? 1 - smooth((t - T_GO) / 0.2) : S.feed;
+  S.inBelt = t < T_STRIP;                                               // round 0 is still in its link
+  S.linkFall = t >= T_FEED1; S.linkTau = (t - T_FEED1) * 1.6; S.linkA = 1 - smooth((t - 0.92) / 0.07);
+  // the round being fed / fired, then its spent case
+  S.spentOn = false; S.liveOn = false;
+  if (t >= T_STRIP && t < T_EJECT) {
+    S.liveOn = true; S.liveBullet = t < T_BUL0; S.lx = S.bf;
+    const rise = t < T_FIRE ? smooth((S.bf - TRAY_X) / 3.8) : 1;
+    S.ly = TRAY_Y * (1 - rise); S.tilt = -0.26 * Math.sin(Math.PI * rise);
+  } else if (t >= T_EJECT) { S.spentOn = t < 0.93; S.tau = (t - T_EJECT) * 1.6; S.spentA = 1 - smooth((t - 0.86) / 0.06); }
+  S.rounds = CAP - mod(k, CAP) - (t >= T_BUL0 ? 1 : 0);
+  return S;
+}
+
+const pawlZ = () => -PITCH * (1 - S.lever) - PAWL_OFF;
+function placeLink(l, s) { const [y, z, a] = beltAt(s); l.position.set(TRAY_X, y, z); l.rotation.x = -a; }
+function apply() {
+  gun.position.x = -0.5 * S.kick;
+  slide.position.x = -S.d;
+  bolt.position.x = S.bf; bolt.rotation.x = S.boltRot;
+  retSpring.scale.x = Math.max(0.6, SPRING_SEAT - S.d - BUF_X);
+  sear.rotation.z = -SEAR_DROP * S.pull;
+  trig.rotation.z = 0.1 - 0.3 * S.pull;
+  lever.rotation.y = Math.asin(-pawlZ() / (LEVER_LEN - 0.45));
+
+  live.visible = S.liveOn;
+  if (S.liveOn) { live.position.set(S.lx, S.ly, 0); live.rotation.z = S.tilt; live.userData.bullet.visible = S.liveBullet; }
+  spent.visible = S.spentOn && S.spentA > 0.01;
+  if (spent.visible) {
+    const q = S.tau; spent.position.set(EJECT_BF - 5 * q, -14 * q - 55 * q * q, 30 * q);
+    spent.rotation.set(5 * q, 11 * q, -8 * q); M.caseSpent.opacity = S.spentA;
+  }
+  beltRounds.forEach((r, i) => {
+    const s = (i - S.feed) * PITCH, [y, z] = beltAt(s);
+    r.visible = (i > 0 || S.inBelt) && y > -13.4; r.position.set(TRAY_X, y, z);
+    const l = beltLinks[i]; l.visible = (i > 0 || !S.linkFall) && y > -13.4; placeLink(l, s);
+  });
+  usedLink.visible = S.linkFall && S.linkA > 0.01;
+  if (usedLink.visible) {
+    const q = S.linkTau; usedLink.position.set(TRAY_X, TRAY_Y - 6 * q - 70 * q * q, PITCH + 24 * q);
+    usedLink.rotation.set(-9 * q, 3 * q, 0); M.linkSpent.opacity = S.linkA;
+  }
+
+  shot.visible = S.bulletOn; shot.position.x = S.bx;
+  const gasEnd = Math.min(S.bx + 4.2, MUZZLE_X);
+  boreGas.visible = S.bore > 0.01; boreGas.scale.x = Math.max(0.01, gasEnd - 4.4); boreGas.material.opacity = 0.6 * S.bore;
+  portGas.visible = S.gas > 0.01; portGas.material.opacity = 0.8 * S.gas; portGas.scale.setScalar(0.6 + 0.6 * S.gas);
+  cylGas.visible = S.gas > 0.01; cylGas.position.x = 25.9 - S.d; cylGas.scale.x = 1.6 + S.d; cylGas.material.opacity = 0.75 * S.gas;
+  muzzle.visible = S.flash > 0.01; muzzle.children.forEach((c) => c.material.opacity = 0.9 * S.flash); muzzle.scale.setScalar(0.4 + 0.8 * S.flash);
+  muzzleLight.intensity = 900 * S.flash;
+  primer.visible = S.prim > 0.01; primer.material.opacity = 0.9 * S.prim; primer.scale.setScalar(0.5 + S.prim);
+}
+
+// ---------- clock ----------
+const clock = { t: 0, k: 0, playing: true, speed: 1, scrubbing: false };
+const phaseAt = (t) => { let i = PHASES.length - 1; while (i > 0 && t < PHASES[i].s) i--; return i; };
+function advance(dt) {
+  if (!clock.playing || clock.scrubbing) return;
+  let t = clock.t + dt * clock.speed / BASE_SECONDS;
+  if (t >= 1) { t -= 1; clock.k++; }
+  clock.t = t;
+}
+function seek(t) { clock.t = clamp(t, 0, 0.9999); }
+function stepPhase(dir) {
+  setPlaying(false);
+  const i = phaseAt(clock.t);
+  if (dir > 0) {
+    if (i === PHASES.length - 1) { clock.t = 0; clock.k++; } else clock.t = PHASES[i + 1].s;
+  } else if (clock.t - PHASES[i].s > 0.004) clock.t = PHASES[i].s;
+  else if (i === 0) { clock.t = PHASES[PHASES.length - 1].s; clock.k--; }
+  else clock.t = PHASES[i - 1].s;
+}
+const PLAY_D = "M4 2l10 6-10 6z", PAUSE_D = "M4 2h3v12H4zM9 2h3v12H9z";
+function setPlaying(p) {
+  clock.playing = p; $("playIcon").setAttribute("d", p ? PAUSE_D : PLAY_D); $("play").setAttribute("aria-label", p ? "Pause" : "Play");
+}
+
+// ---------- phase UI ----------
+const ticks = $("ticks"), plist = $("plist");
+const band = document.createElement("span"); ticks.appendChild(band);
+PHASES.forEach((p, i) => {
+  const tick = document.createElement("i"); tick.style.left = p.s * 100 + "%"; tick.title = p.title; ticks.appendChild(tick);
+  const li = document.createElement("li");
+  li.innerHTML = `<button type="button"><span class="n">${i + 1}</span><span>${p.title}</span></button>`;
+  li.firstChild.addEventListener("click", () => { seek(p.s); });
+  plist.appendChild(li);
+});
+let shownPhase = -1;
+function showPhase(i) {
+  if (i === shownPhase) return; shownPhase = i;
+  const p = PHASES[i], end = i + 1 < PHASES.length ? PHASES[i + 1].s : 1;
+  $("phaseNum").textContent = `${i + 1} / ${PHASES.length}`; $("phaseTitle").textContent = p.title; $("phaseText").textContent = p.text;
+  band.style.left = p.s * 100 + "%"; band.style.width = (end - p.s) * 100 + "%";
+  [...plist.children].forEach((li, j) => li.classList.toggle("on", j === i));
+}
+
+// ---------- part labels ----------
+const LABELS = {
+  trigger: ["Trigger", () => [TRIG_P[0] + 0.25 - 0.8 * S.pull, -9.2, 0.35], 56, 40],
+  sear: ["Sear", () => [SEAR_P[0] + 2.7, SEAR_P[1] + 1.0 - 0.72 * S.pull, 0.4], -70, 52],
+  slide: ["Slide", () => [-8.5 - S.d, -1.5, 1.0], -46, -84],
+  bolt: ["Rotating bolt", () => [S.bf - 2, 0.7, 0.4], 56, -96],
+  pin: ["Firing pin", () => [-S.d - BOLT_LEN - 0.4, 0.3, 0.55], -62, -58],
+  spring: ["Return spring", () => [BUF_X + 0.45 * (SPRING_SEAT - S.d - BUF_X), GAS_Y - 0.4, 0.3], -30, 74],
+  buffer: ["Buffer", () => [-27, -1.3, 0.9], -56, -50],
+  piston: ["Gas piston", () => [25.2 - S.d, GAS_Y, 0.68], -34, 62],
+  gas: ["Gas port", () => [PORT_X, -1.0, 0.5], -30, -62],
+  reg: ["Gas regulator", () => [30, GAS_Y, 0.9], 62, 44],
+  lever: ["Feed lever", () => [-8, 3.15, 0.25 * pawlZ()], -66, -62],
+  pawl: ["Feed pawl", () => [-2.4, 2.4, pawlZ()], 60, -60],
+  belt: ["Belt", () => [-1.6, -3, -3.7], 70, 36],
+  link: ["Link", () => S.linkFall ? (usedLink.visible ? [TRAY_X + 2.2, usedLink.position.y, usedLink.position.z] : null) : [TRAY_X + 2.2, TRAY_Y + 0.5, S.feed * PITCH], 84, -22],
+  case: ["Cartridge case", () => S.spentOn ? (spent.visible ? [spent.position.x + 2, spent.position.y, spent.position.z] : null) : S.liveOn ? [S.lx + 2.2, S.ly, 0.4] : [TRAY_X + 3.4, TRAY_Y, 0.4], 70, 50],
+  bullet: ["Bullet", () => S.bulletOn && S.bx < MUZZLE_X + 6 ? [S.bx + 5, 0, 0] : null, 0, -44],
+};
+const svg = $("leaders"), overlay = $("overlay");
+for (const k in LABELS) {
+  const div = document.createElement("div"); div.className = "lbl"; div.textContent = LABELS[k][0]; overlay.appendChild(div);
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line"); svg.appendChild(line);
+  const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle"); dot.setAttribute("r", 2.2); svg.appendChild(dot);
+  LABELS[k].el = { div, line, dot };
+}
+let labelMode = "step";
+const _v = new THREE.Vector3();
+function updateLabels() {
+  overlay.style.display = labelMode === "off" ? "none" : ""; if (labelMode === "off") return;
+  const w = shellEl.clientWidth, h = shellEl.clientHeight, cur = PHASES[phaseAt(clock.t)].parts, sc = w < 560 ? 0.7 : 1;
+  for (const k in LABELS) {
+    const [, at, ox, oy] = LABELS[k], e = LABELS[k].el, p = (labelMode === "all" || cur.includes(k)) ? at() : null;
+    let vis = !!p, x = 0, y = 0;
+    if (vis) { _v.set(p[0], p[1], p[2]); gun.localToWorld(_v); _v.project(camera); x = (_v.x * 0.5 + 0.5) * w; y = (-_v.y * 0.5 + 0.5) * h; vis = _v.z < 1 && x > -20 && x < w + 20 && y > -20 && y < h + 20; }
+    e.div.style.display = e.line.style.display = e.dot.style.display = vis ? "" : "none";
+    if (!vis) continue;
+    const lx = x + ox * sc, ly = y + oy * sc;
+    e.div.style.transform = `translate(${lx}px, ${ly}px) translate(-50%, -50%)`;
+    e.line.setAttribute("x1", x); e.line.setAttribute("y1", y); e.line.setAttribute("x2", lx); e.line.setAttribute("y2", ly - Math.sign(oy) * 9);
+    e.dot.setAttribute("cx", x); e.dot.setAttribute("cy", y);
+  }
+}
+
+// ---------- controls ----------
+function pressGroup(group, btn) { [...group.querySelectorAll("button")].forEach((c) => c.setAttribute("aria-pressed", c === btn)); }
+let bodyMode = "see";
+function syncBody() {
+  const solid = bodyMode === "solid", v = +$("bodyT").value, o = solid ? 1 : 1 - v / 100;
+  $("bodyO").textContent = v + "%"; $("bodyLevel").classList.toggle("dim", solid);
+  for (const m of SHELL_MATS) {
+    m.opacity = o; m.depthWrite = solid;
+    if (m.transparent === solid) { m.transparent = !solid; m.needsUpdate = true; }
+  }
+  M.photo.opacity = o; M.photo.depthWrite = solid;
+  if (M.photo.transparent === solid) { M.photo.transparent = !solid; M.photo.needsUpdate = true; }
+  photoShell.visible = shellReady && o > 0.015;
+  for (const m of shellMeshes) m.visible = o > 0.015;
+  for (const e of edgeLines) e.visible = !solid;
+  M.edge.opacity = solid ? 0 : 0.14 + 0.3 * v / 100;
+}
+$("body").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; bodyMode = b.dataset.b; pressGroup($("body"), b); syncBody(); });
+$("bodyT").addEventListener("input", syncBody);
+
+$("speed").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; clock.speed = +b.dataset.s; pressGroup($("speed"), b); });
+$("play").addEventListener("click", () => setPlaying(!clock.playing));
+$("back").addEventListener("click", () => stepPhase(-1));
+$("fwd").addEventListener("click", () => stepPhase(1));
+const scrub = $("scrub");
+scrub.addEventListener("pointerdown", () => { clock.scrubbing = true; });
+scrub.addEventListener("input", () => { clock.scrubbing = true; seek(scrub.value / 1000); });
+for (const ev of ["pointerup", "pointercancel", "change", "blur"]) scrub.addEventListener(ev, () => { clock.scrubbing = false; });
+window.addEventListener("keydown", (e) => {
+  if (e.target.matches?.("input[type=range]")) return;
+  if (e.code === "Space") { e.preventDefault(); if (!e.repeat) setPlaying(!clock.playing); }
+  else if (e.code === "ArrowRight") { e.preventDefault(); stepPhase(1); }
+  else if (e.code === "ArrowLeft") { e.preventDefault(); stepPhase(-1); }
+});
+$("labelMode").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; labelMode = b.dataset.l; pressGroup($("labelMode"), b); });
+
+// ---------- camera presets ----------
+const VIEWS = {
+  iso: { dir: [0.5, 0.26, 1], target: [-1, -9, 0], span: [106, 42] },
+  right: { dir: [0, 0.04, 1], target: [-1.5, -9, 0], span: [110, 44] },
+  left: { dir: [0, 0.04, -1], target: [-1.5, -9, 0], span: [110, 44] },
+  action: { dir: [0.18, 0.14, 1], target: [-11, -2, 0], span: [40, 18] },
+  feed: { dir: [0.45, 0.75, -1], target: [-4, 0.8, -1], span: [24, 14] },
+  gas: { dir: [0.3, 0.2, 1], target: [20, -1.6, 0], span: [36, 13] },
+};
+let curView = "iso", userMoved = false, fly = null;
+const barH = () => document.querySelector(".transport").offsetHeight + 12;
+function viewPose(name) {
+  const v = VIEWS[name], th = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const usable = Math.max(0.35, 1 - barH() / Math.max(1, shellEl.clientHeight)); // share of the height not under the transport bar
+  const dist = Math.max(v.span[1] / (2 * th * usable), v.span[0] / (2 * th * camera.aspect));
+  const target = new THREE.Vector3(...v.target);
+  return { target, pos: target.clone().add(new THREE.Vector3(...v.dir).normalize().multiplyScalar(dist)) };
+}
+function setView(name, animate) {
+  curView = name; userMoved = false;
+  const to = viewPose(name);
+  if (!animate) { fly = null; controls.target.copy(to.target); camera.position.copy(to.pos); controls.update(); return; }
+  fly = { t0: performance.now(), fromT: controls.target.clone(), fromP: camera.position.clone(), to };
+}
+function stepFly(now) {
+  if (!fly) return;
+  const u = smooth((now - fly.t0) / 550);
+  controls.target.lerpVectors(fly.fromT, fly.to.target, u); camera.position.lerpVectors(fly.fromP, fly.to.pos, u);
+  if (u >= 1) fly = null;
+}
+$("views").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; pressGroup($("views"), b); setView(b.dataset.view, true); });
+controls.addEventListener("start", () => { userMoved = true; fly = null; pressGroup($("views"), null); });
+
+function resize() {
+  const w = Math.max(1, shellEl.clientWidth), h = Math.max(1, shellEl.clientHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  renderer.setSize(w, h, false); camera.aspect = w / h;
+  camera.setViewOffset(w, h, 0, Math.round(barH() / 2), w, h); // centre the scene in the area above the transport bar
+  camera.updateProjectionMatrix();
+  if (!userMoved) setView(curView, false);
+}
+const ro = new ResizeObserver(resize); ro.observe(shellEl);
+
+// ---------- loop ----------
+let last = performance.now(), rafId = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  advance(dt);
+  pose(clock.t, clock.k); apply();
+  showPhase(phaseAt(clock.t));
+  if (!clock.scrubbing) scrub.value = Math.round(clock.t * 1000);
+  $("ammoN").textContent = S.rounds;
+  stepFly(now); controls.update(); renderer.render(scene, camera); updateLabels();
+  rafId = requestAnimationFrame(frame);
+}
+
+resize(); syncBody(); setPlaying(true);
+rafId = requestAnimationFrame(frame);
+window.__sim = { clock, S, PHASES, pose, apply, seek, stepPhase, setPlaying, setView, T_STRIP, T_EJECT };
+
+window.addEventListener("pagehide", () => {
+  cancelAnimationFrame(rafId); ro.disconnect(); controls.dispose();
+  scene.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { if (m.map) m.map.dispose(); m.dispose(); }); });
+  envTex.dispose(); pmrem.dispose(); renderer.dispose();
+});
+</script>
+</body>
+</html>
