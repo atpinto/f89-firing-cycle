@@ -107,7 +107,7 @@
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
 } }
 </script>
-<script src="f89-assets.js?v=2"></script>
+<script src="f89-assets.js?v=3"></script>
 </head>
 <body>
 <div class="webgl-object-shell" id="shell">
@@ -261,7 +261,9 @@ const M = {
   piston: part(0x8d9399, { roughness: 0.3 }),
   pin: part(0xd5d9dd, { roughness: 0.2, metalness: 1 }),
   sear: part(0xd9a441, { metalness: 0.5, roughness: 0.45 }),
-  trigger: part(0xc98a2b, { metalness: 0.4, roughness: 0.5 }),
+  trigger: part(0x2b2d31, { metalness: 0.75, roughness: 0.38 }),
+  cover: std({ color: 0xffffff, roughness: 0.6, metalness: 0.2, envMapIntensity: 0.4, side: THREE.DoubleSide }), // dust cover, photo-textured
+  port: std({ color: 0x060607, roughness: 0.85, metalness: 0.2 }),                                                 // inside of the ejection port
   feed: part(0x5fa8a0, { metalness: 0.5, roughness: 0.45 }),
   steelDark: std({ color: 0x3c4046, metalness: 0.8, roughness: 0.45 }),
   link: std({ color: 0x2a2c2f, metalness: 0.8, roughness: 0.5, side: THREE.DoubleSide }),
@@ -375,8 +377,25 @@ Promise.all([loadImg(window.F89_ASSETS.tex), loadImg(window.F89_ASSETS.depth)]).
   const tex = new THREE.Texture(texImg); tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); tex.needsUpdate = true;
   M.photo.map = tex; M.photo.needsUpdate = true;
+  M.cover.map = tex; M.cover.needsUpdate = true;
   shellReady = true; syncBody();
 }).catch(() => { $("err").textContent = "The photo body could not be decoded."; $("err").style.display = "grid"; });
+
+// dust cover over the ejection port, low on the right of the receiver: the embossed plate at photo px x 805-985,
+// y 250-305 (0.0535 cm/px, breech at x 1010, bore axis at y 225). Hinged along its bottom edge; it swings out and down.
+const PH = { s: 0.0535, bx: 1010, ay: 225, W: 1958, H: 800 }, CPX = { x0: 805, x1: 985, y0: 250, y1: 305 };
+const COVER = { x0: (CPX.x0 - PH.bx) * PH.s, x1: (CPX.x1 - PH.bx) * PH.s, yTop: -(CPX.y0 - PH.ay) * PH.s, yHinge: -(CPX.y1 - PH.ay) * PH.s, z: 2.68, open: 2.45 };
+const coverHinge = new THREE.Group(); coverHinge.position.set((COVER.x0 + COVER.x1) / 2, COVER.yHinge, COVER.z); gun.add(coverHinge);
+{
+  const w = COVER.x1 - COVER.x0, h = COVER.yTop - COVER.yHinge, g = new THREE.BoxGeometry(w, h, 0.12);
+  const uv = g.attributes.uv, u0 = CPX.x0 / PH.W, u1 = CPX.x1 / PH.W, v0 = 1 - CPX.y1 / PH.H, v1 = 1 - CPX.y0 / PH.H;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + uv.getX(i) * (u1 - u0), v0 + uv.getY(i) * (v1 - v0));
+  g.translate(0, h / 2, -0.06);
+  const plate = new THREE.Mesh(g, M.cover); plate.castShadow = true; plate.renderOrder = 5; coverHinge.add(plate);
+  coverHinge.userData.h = h;
+}
+const port = box(COVER.x0 + 0.25, COVER.x1 - 0.25, COVER.yHinge + 0.25, COVER.yTop - 0.25, 2.52, 2.55, M.port);
+port.renderOrder = 5;
 
 // parts the photo does not show: ammo pouch and bipod (modelled), and a liner so the bore and gas cylinder stay visible
 
@@ -473,8 +492,21 @@ box(-0.3, 2.95, -0.2, 0.25, -0.4, 0.4, M.sear, sear);
 box(2.45, 2.95, 0.25, 1.1, -0.4, 0.4, M.sear, sear);                    // sear nose
 cylZ(0.2, 2.4, M.steelDark, sear);
 const trig = new THREE.Group(); trig.position.set(TRIG_P[0], TRIG_P[1], 0); gun.add(trig);
-box(-0.3, 0.3, -3.4, 0.2, -0.35, 0.35, M.trigger, trig);
-box(-0.9, 0.3, 0.2, 1.5, -0.35, 0.35, M.trigger, trig);                 // arm that works the sear
+{ // blade traced from the photo (px, same points as source/build_relief.py): wide at the top, concave front face,
+  // tip curling forward. Pivot at photo px (748, 346.5); 0.0535 cm per px.
+  const TPX = [[713, 350], [716, 370], [720, 388], [727, 400], [737, 410], [748, 418], [753, 416], [745, 407], [740, 397],
+    [739, 385], [744, 374], [752, 366], [760, 358], [763, 350], [763, 343], [713, 343]];
+  const pts = TPX.map(([x, y]) => [(x - 748) * 0.0535, -(y - 346.5) * 0.0535]);
+  const s = new THREE.Shape();
+  pts.forEach(([x, y], i) => {
+    if (!i) return s.moveTo(x, y);
+    const [px, py] = pts[i - 1]; s.quadraticCurveTo(px, py, (px + x) / 2, (py + y) / 2); // rounded corners
+  });
+  s.lineTo(...pts[pts.length - 1]); s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.5, bevelEnabled: true, bevelThickness: 0.08, bevelSize: 0.08, bevelSegments: 2 });
+  g.translate(0, 0, -0.25); trig.add(new THREE.Mesh(g, M.trigger));
+}
+box(-0.9, 0.3, 0.2, 1.5, -0.3, 0.3, M.trigger, trig);                   // arm that works the sear
 cylZ(0.2, 2.4, M.steelDark, trig);
 
 // ---------- cartridges, links and the belt ----------
@@ -542,9 +574,9 @@ const PHASES = [
     text: "The bullet passes the gas port. Gas flows through the regulator into the cylinder under the barrel and drives the long-stroke piston, which is one piece with the slide, to the rear." },
   { s: 0.55, title: "Unlocking", parts: ["slide", "bolt"],
     text: "The slide moves back a short way on its own while the bullet leaves and the pressure drops. Its cam then turns the bolt out of lock." },
-  { s: 0.61, title: "Extraction", parts: ["bolt", "case"],
-    text: "Bolt and slide travel back together. The extractor pulls the empty case out of the chamber." },
-  { s: 0.68, title: "Ejection", parts: ["case", "bolt", "link"],
+  { s: 0.61, title: "Extraction", parts: ["bolt", "case", "cover"],
+    text: "Bolt and slide travel back together and the extractor pulls the empty case out of the chamber. On the first shot the moving slide also knocks the dust cover open; it stays open until it is closed by hand." },
+  { s: 0.68, title: "Ejection", parts: ["case", "bolt", "link", "cover"],
     text: "As the case clears the chamber the spring-loaded ejector in the bolt face throws it out of the ejection port, low on the right side." },
   { s: 0.75, title: "Belt feed", parts: ["lever", "pawl", "belt", "link", "buffer", "pouch"],
     text: "The roller on the bolt swings the feed lever in the feed cover. The feed pawl drags the belt across one place: the next round arrives in the tray and the empty link falls out to the right. The slide meets the buffer." },
@@ -603,6 +635,8 @@ function pose(t, k) {
     const rise = t < T_FIRE ? smooth((S.bf - TRAY_X) / 3.8) : 1;
     S.ly = TRAY_Y * (1 - rise); S.tilt = -0.26 * Math.sin(Math.PI * rise);
   } else if (t >= T_EJECT) { S.spentOn = t < 0.93; S.tau = (t - T_EJECT) * 1.6; S.spentA = 1 - smooth((t - 0.86) / 0.06); }
+  // dust cover: closed until the first shot, knocked open as the slide starts back, then left open
+  S.cover = k > 0 ? 1 : k < 0 ? 0 : smooth((t - 0.56) / 0.03);
   S.rounds = CAP - mod(k, CAP) - (t >= T_BUL0 ? 1 : 0);
   return S;
 }
@@ -615,7 +649,9 @@ function apply() {
   bolt.position.x = S.bf; bolt.rotation.x = S.boltRot;
   retSpring.scale.x = Math.max(0.6, SPRING_SEAT - S.d - BUF_X);
   sear.rotation.z = -SEAR_DROP * S.pull;
-  trig.rotation.z = 0.1 - 0.3 * S.pull;
+  trig.rotation.z = -0.28 * S.pull;
+  coverHinge.rotation.x = COVER.open * S.cover;
+  coverHinge.visible = photoShell.visible; port.visible = photoShell.visible && S.cover > 0.01;
   lever.rotation.y = Math.asin(-pawlZ() / (LEVER_LEN - 0.45));
 
   live.visible = S.liveOn;
@@ -707,6 +743,7 @@ const LABELS = {
   pouch: ["200-round pouch", () => [POUCH.x1, POUCH.top - 9, 4], 70, 30],
   link: ["Link", () => S.linkFall ? (usedLink.visible ? [TRAY_X + 2.2, usedLink.position.y, usedLink.position.z] : null) : [TRAY_X + 2.2, TRAY_Y + 0.5, S.feed * PITCH], 84, -22],
   case: ["Cartridge case", () => S.spentOn ? (spent.visible ? [spent.position.x + 2, spent.position.y, spent.position.z] : null) : S.liveOn ? [S.lx + 2.2, S.ly, 0.4] : [TRAY_X + 3.4, TRAY_Y, 0.4], 70, 50],
+  cover: ["Dust cover", () => { const a = COVER.open * S.cover, h = coverHinge.userData.h * 0.6; return [COVER.x1 - 1.5, COVER.yHinge + h * Math.cos(a), COVER.z + h * Math.sin(a)]; }, 58, 56],
   bullet: ["Bullet", () => S.bulletOn && S.bx < MUZZLE_X + 6 ? [S.bx + 5, 0, 0] : null, 0, -44],
 };
 const svg = $("leaders"), overlay = $("overlay");
@@ -747,6 +784,10 @@ function syncBody() {
   M.photo.opacity = o; M.photo.depthWrite = solid;
   if (M.photo.transparent === solid) { M.photo.transparent = !solid; M.photo.needsUpdate = true; }
   photoShell.visible = shellReady && o > 0.015;
+  for (const m of [M.cover, M.port]) {
+    m.opacity = o; m.depthWrite = solid;
+    if (m.transparent === solid) { m.transparent = !solid; m.needsUpdate = true; }
+  }
   for (const m of shellMeshes) m.visible = o > 0.015;
   for (const e of edgeLines) e.visible = !solid;
   M.edge.opacity = solid ? 0 : 0.14 + 0.3 * v / 100;
@@ -828,7 +869,7 @@ function frame(now) {
 
 resize(); syncBody(); setPlaying(true);
 rafId = requestAnimationFrame(frame);
-window.__sim = { clock, S, PHASES, pose, apply, seek, stepPhase, setPlaying, setView, T_STRIP, T_EJECT, camera, controls };
+window.__sim = { clock, S, PHASES, pose, apply, seek, stepPhase, setPlaying, setView, T_STRIP, T_EJECT, camera, controls, syncBody };
 
 window.addEventListener("pagehide", () => {
   cancelAnimationFrame(rafId); ro.disconnect(); controls.dispose();

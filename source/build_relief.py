@@ -25,9 +25,37 @@ def dist(m, n=16):
     for _ in range(n): d += cur; cur = erode(cur)
     return d
 
-gun = erode(~backdrop(a))
+def fill_small_holes(bd, max_px=1500):
+    # The bare-metal gas block is nearly as pale as the backdrop, so its highlights were read as holes in the body.
+    # Keep backdrop that reaches the image border or forms a large opening (carrying handle, trigger guard);
+    # fill every smaller enclosed patch.
+    from PIL import ImageDraw
+    img = Image.fromarray(np.where(bd, 255, 0).astype(np.uint8))
+    ImageDraw.floodfill(img, (0, 0), 128)                 # the crop has a backdrop margin, so this is the outside
+    a8 = np.asarray(img); keep = a8 == 128; hole = a8 == 255
+    # label the enclosed patches: each pixel takes the smallest index among its 4-neighbours, with pointer jumping
+    h, w = hole.shape; BIG = h * w
+    lab = np.where(hole, np.arange(BIG).reshape(h, w), BIG)
+    for _ in range(2000):
+        m = lab.copy()
+        m[1:] = np.minimum(m[1:], lab[:-1]); m[:-1] = np.minimum(m[:-1], lab[1:])
+        m[:, 1:] = np.minimum(m[:, 1:], lab[:, :-1]); m[:, :-1] = np.minimum(m[:, :-1], lab[:, 1:])
+        m = np.where(hole, m, BIG)
+        flat = np.append(m.ravel(), BIG); m = np.where(hole, flat[np.minimum(m, BIG)], BIG)  # jump to the root's label
+        if np.array_equal(m, lab): break
+        lab = m
+    size = np.bincount(lab[hole], minlength=BIG)
+    keep |= hole & (size[np.minimum(lab, BIG - 1)] >= max_px)
+    return keep
+gun = erode(~fill_small_holes(backdrop(a)))
 gun &= ~(box(1330, W, 338, H))            # bipod legs: modelled in 3D instead
-gun &= ~(box(706, 796, 350, 414))         # trigger blade: animated in 3D
+# trigger blade: animated in 3D, so cut just its outline (traced from the photo; index.html uses the same points)
+TRIGGER_PX = [(713, 350), (716, 370), (720, 388), (727, 400), (737, 410), (748, 418), (753, 416), (745, 407), (740, 397),
+              (739, 385), (744, 374), (752, 366), (760, 358), (763, 350)]
+from PIL import ImageDraw
+_t = Image.new('L', (W, H), 0); ImageDraw.Draw(_t).polygon(TRIGGER_PX, fill=255, outline=255)
+_t = _t.filter(ImageFilter.MaxFilter(5))                  # 2 px margin takes the blade's soft edge with it
+gun &= ~(np.asarray(_t) > 0)
 gun = erode(gun)
 
 # half-thickness (cm) by region, rounded off towards the outline
