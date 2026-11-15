@@ -382,19 +382,19 @@ Promise.all([loadImg(window.F89_ASSETS.tex), loadImg(window.F89_ASSETS.depth)]).
 }).catch(() => { $("err").textContent = "The photo body could not be decoded."; $("err").style.display = "grid"; });
 
 // dust cover over the ejection port, low on the right of the receiver: the embossed plate at photo px x 805-985,
-// y 250-305 (0.0535 cm/px, breech at x 1010, bore axis at y 225). Hinged along its bottom edge; it swings out and down.
+// y 250-305 (0.0535 cm/px, breech at x 1010, bore axis at y 225). Hinged along its top edge; it swings out and up.
 const PH = { s: 0.0535, bx: 1010, ay: 225, W: 1958, H: 800 }, CPX = { x0: 805, x1: 985, y0: 250, y1: 305 };
-const COVER = { x0: (CPX.x0 - PH.bx) * PH.s, x1: (CPX.x1 - PH.bx) * PH.s, yTop: -(CPX.y0 - PH.ay) * PH.s, yHinge: -(CPX.y1 - PH.ay) * PH.s, z: 2.68, open: 2.45 };
-const coverHinge = new THREE.Group(); coverHinge.position.set((COVER.x0 + COVER.x1) / 2, COVER.yHinge, COVER.z); gun.add(coverHinge);
+const COVER = { x0: (CPX.x0 - PH.bx) * PH.s, x1: (CPX.x1 - PH.bx) * PH.s, yTop: -(CPX.y0 - PH.ay) * PH.s, yBot: -(CPX.y1 - PH.ay) * PH.s, z: 2.68, open: -2.2 };
+const coverHinge = new THREE.Group(); coverHinge.position.set((COVER.x0 + COVER.x1) / 2, COVER.yTop, COVER.z); gun.add(coverHinge);
 {
-  const w = COVER.x1 - COVER.x0, h = COVER.yTop - COVER.yHinge, g = new THREE.BoxGeometry(w, h, 0.12);
+  const w = COVER.x1 - COVER.x0, h = COVER.yTop - COVER.yBot, g = new THREE.BoxGeometry(w, h, 0.12);
   const uv = g.attributes.uv, u0 = CPX.x0 / PH.W, u1 = CPX.x1 / PH.W, v0 = 1 - CPX.y1 / PH.H, v1 = 1 - CPX.y0 / PH.H;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + uv.getX(i) * (u1 - u0), v0 + uv.getY(i) * (v1 - v0));
-  g.translate(0, h / 2, -0.06);
+  g.translate(0, -h / 2, -0.06);                                     // hangs below its top-edge hinge
   const plate = new THREE.Mesh(g, M.cover); plate.castShadow = true; plate.renderOrder = 5; coverHinge.add(plate);
   coverHinge.userData.h = h;
 }
-const port = box(COVER.x0 + 0.25, COVER.x1 - 0.25, COVER.yHinge + 0.25, COVER.yTop - 0.25, 2.52, 2.55, M.port);
+const port = box(COVER.x0 + 0.25, COVER.x1 - 0.25, COVER.yBot + 0.25, COVER.yTop - 0.25, 2.52, 2.55, M.port);
 port.renderOrder = 5;
 
 // parts the photo does not show: ammo pouch and bipod (modelled), and a liner so the bore and gas cylinder stay visible
@@ -743,7 +743,7 @@ const LABELS = {
   pouch: ["200-round pouch", () => [POUCH.x1, POUCH.top - 9, 4], 70, 30],
   link: ["Link", () => S.linkFall ? (usedLink.visible ? [TRAY_X + 2.2, usedLink.position.y, usedLink.position.z] : null) : [TRAY_X + 2.2, TRAY_Y + 0.5, S.feed * PITCH], 84, -22],
   case: ["Cartridge case", () => S.spentOn ? (spent.visible ? [spent.position.x + 2, spent.position.y, spent.position.z] : null) : S.liveOn ? [S.lx + 2.2, S.ly, 0.4] : [TRAY_X + 3.4, TRAY_Y, 0.4], 70, 50],
-  cover: ["Dust cover", () => { const a = COVER.open * S.cover, h = coverHinge.userData.h * 0.6; return [COVER.x1 - 1.5, COVER.yHinge + h * Math.cos(a), COVER.z + h * Math.sin(a)]; }, 58, 56],
+  cover: ["Dust cover", () => { const a = COVER.open * S.cover, h = coverHinge.userData.h * 0.6; return [COVER.x1 - 1.5, COVER.yTop - h * Math.cos(a), COVER.z - h * Math.sin(a)]; }, 58, -56],
   bullet: ["Bullet", () => S.bulletOn && S.bx < MUZZLE_X + 6 ? [S.bx + 5, 0, 0] : null, 0, -44],
 };
 const svg = $("leaders"), overlay = $("overlay");
