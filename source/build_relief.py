@@ -31,10 +31,16 @@ gun &= ~(box(706, 796, 350, 414))         # trigger blade: animated in 3D
 gun = erode(gun)
 
 # half-thickness (cm) by region, rounded off towards the outline
-base = np.full((H, W), 2.0)
-base[box(0, 445, 0, H)] = 1.9             # butt
-base[box(440, 1000, 190, 346)] = 2.2      # receiver
-base[box(480, 1000, 100, 190)] = 2.0      # feed cover and rail
+# Half-widths of the main body come from the top-down view (reference-photos/minimi-views-top.jpg, 0.133 cm/px):
+# handguard and feed cover 5.0 cm across, receiver behind the grip 4.7, butt 4.1 (butt plate 4.9), rail 2.1.
+# The top view cannot separate parts stacked vertically (grip, guard, handle), so those stay estimates.
+base = np.full((H, W), 2.3)
+base[box(0, 445, 0, H)] = 2.05            # butt
+base[box(0, 45, 0, H)] = 2.45             # butt plate
+base[box(440, 1000, 190, 346)] = 2.35     # receiver
+base[box(800, 1000, 190, 346)] = 2.5      # receiver over the belt feed
+base[box(480, 1000, 100, 190)] = 2.5      # feed cover
+base[box(600, 975, 100, 142)] = 1.05      # rail on the feed cover
 base[box(495, 610, 90, 160)] = 1.6        # rear sight
 base[box(525, 705, 346, 570)] = 1.3       # pistol grip
 base[box(700, 815, 346, 435)] = 0.5       # trigger guard

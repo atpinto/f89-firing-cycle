@@ -107,7 +107,7 @@
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
 } }
 </script>
-<script src="f89-assets.js?v=1"></script>
+<script src="f89-assets.js?v=2"></script>
 </head>
 <body>
 <div class="webgl-object-shell" id="shell">
@@ -184,7 +184,7 @@
     <ol class="plist" id="plist"></ol>
   </section>
 
-  <div class="note">Keys: <b>Space</b> play/pause, <b>←</b> <b>→</b> step one phase. The internal parts are approximate and for illustration only. The belt box and bipod are modelled; the rest of the exterior is built from a photo.</div>
+  <div class="note">Keys: <b>Space</b> play/pause, <b>←</b> <b>→</b> step one phase. The internal parts are approximate and for illustration only. The ammo pouch and bipod are modelled; the rest of the exterior is built from a photo, with its width taken from a top view.</div>
   <footer class="credit">
     <img src="badge.png" alt="2HB D Coy 1 PL badge">
     <span><span>Created by LT Armando Teixeira Pinto</span><span>2HB D-COY 1 PL</span></span>
@@ -251,7 +251,8 @@ const M = {
   photo: std({ color: 0xffffff, roughness: 0.78, metalness: 0.06, envMapIntensity: 0.3 }),
   barrel: std({ color: 0x1b1c1f, roughness: 0.4, metalness: 0.8, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }),
   steel: shellMat(0x4a4d50, { metalness: 0.7, roughness: 0.45 }), // bipod
-  box: shellMat(0x3b4032, { metalness: 0.05, roughness: 0.8 }),   // belt box
+  pouch: shellMat(0xffffff, { metalness: 0, roughness: 0.95, envMapIntensity: 0.35 }),  // 200-round soft pouch
+  pouchTop: shellMat(0x151618, { metalness: 0.1, roughness: 0.42 }),                   // its hard plastic top
   edge: new THREE.LineBasicMaterial({ color: 0xaab4c0, transparent: true, opacity: 0.32, depthWrite: false }),
   slide: part(0x5d6268, { roughness: 0.42 }),
   bolt: part(0xb9bec4, { roughness: 0.25, metalness: 0.95 }),
@@ -270,7 +271,7 @@ const M = {
   brass: std({ color: 0xc9a24a, metalness: 0.95, roughness: 0.28, side: THREE.DoubleSide }),
   copper: std({ color: 0xb46a3c, metalness: 0.9, roughness: 0.33, side: THREE.DoubleSide }),
 };
-const SHELL_MATS = [M.steel, M.box];
+const SHELL_MATS = [M.steel, M.pouch, M.pouchTop];
 const glow = (color) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
 
 // ---------- geometry helpers ----------
@@ -337,7 +338,9 @@ Promise.all([loadImg(window.F89_ASSETS.tex), loadImg(window.F89_ASSETS.depth)]).
   }
   const n = pos.length / 3; // mirror the right half to make the left half
   for (let i = 0; i < n; i++) { pos.push(pos[3 * i], pos[3 * i + 1], -pos[3 * i + 2]); uv.push(uv[2 * i], uv[2 * i + 1]); }
-  const ind = [], tri = (a, b, c) => { ind.push(a, b, c, c + n, b + n, a + n); };
+  const ind = [], edges = new Map();
+  const edge = (p, q) => { const key = p < q ? p * n + q : q * n + p; edges.set(key, edges.has(key) ? null : [p, q]); };
+  const tri = (a, b, c) => { ind.push(a, b, c, c + n, b + n, a + n); edge(a, b); edge(b, c); edge(c, a); };
   for (let y = 0; y < H - 1; y++) for (let x = 0; x < W - 1; x++) {
     const a = idx[y * W + x], b = idx[y * W + x + 1], c = idx[(y + 1) * W + x], d = idx[(y + 1) * W + x + 1];
     const A = a >= 0, B = b >= 0, C = c >= 0, D = d >= 0;
@@ -346,6 +349,19 @@ Promise.all([loadImg(window.F89_ASSETS.tex), loadImg(window.F89_ASSETS.depth)]).
     else if (B && C && D) tri(b, c, d);
     else if (A && C && D) tri(a, c, d);
     else if (A && B && D) tri(a, d, b);
+  }
+  // The two halves stop short of the centre plane at the outline (the relief is still ~40% of full thickness there),
+  // which left a slot along the top, bottom, front and back. Close every outline and hole with a wall joining each
+  // boundary edge to its mirror. Walls get their own vertices so their normals stay flat, and sample the photo a
+  // pixel inside the outline.
+  const IN = 1.2;
+  for (const e of edges.values()) {
+    if (!e) continue;
+    const [p, q] = e, w = pos.length / 3;
+    const ex = pos[3 * q] - pos[3 * p], ey = pos[3 * q + 1] - pos[3 * p + 1], el = Math.hypot(ex, ey) || 1;
+    const du = -ey / el * IN / W, dv = ex / el * IN / H; // inward = left of the edge
+    for (const v of [p, q, q + n, p + n]) { pos.push(pos[3 * v], pos[3 * v + 1], pos[3 * v + 2]); uv.push(uv[2 * v] + du, uv[2 * v + 1] + dv); }
+    ind.push(w, w + 3, w + 1, w + 1, w + 3, w + 2);
   }
   const geo = photoShell.geometry;
   geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
@@ -362,8 +378,61 @@ Promise.all([loadImg(window.F89_ASSETS.tex), loadImg(window.F89_ASSETS.depth)]).
   shellReady = true; syncBody();
 }).catch(() => { $("err").textContent = "The photo body could not be decoded."; $("err").style.display = "grid"; });
 
-// parts the photo does not show: belt box and bipod (modelled), and a liner so the bore and gas cylinder stay visible
-box(-10.5, -0.8, -16, -6.3, -6.5, 2.2, M.box);                                    // 200-round belt box
+// parts the photo does not show: ammo pouch and bipod (modelled), and a liner so the bore and gas cylinder stay visible
+
+// 200-round soft pouch: an Auscam canvas bag under a black hard top. It hangs across the gun under the feed;
+// the high end with the latch is on the feed (left) side, and the top slopes down toward the right.
+function auscam() { // procedural disruptive camouflage, tiles seamlessly
+  const N = 512, c = document.createElement("canvas"); c.width = c.height = N;
+  const g = c.getContext("2d"); let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  g.fillStyle = "#b3a983"; g.fillRect(0, 0, N, N);
+  const blob = (col, r0, count) => {
+    for (let i = 0; i < count; i++) {
+      const cx = rnd() * N, cy = rnd() * N, r = r0 * (0.6 + 0.8 * rnd()), k = 9, pts = [];
+      for (let j = 0; j < k; j++) { const a = j / k * Math.PI * 2, rr = r * (0.55 + 0.7 * rnd()); pts.push([Math.cos(a) * rr * (1.3 + 0.4 * rnd()), Math.sin(a) * rr]); }
+      for (const ox of [-N, 0, N]) for (const oy of [-N, 0, N]) {
+        g.beginPath();
+        for (let j = 0; j <= k; j++) {
+          const p = pts[j % k], q = pts[(j + 1) % k], mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2;
+          if (j === 0) g.moveTo(cx + ox + mx, cy + oy + my); else g.quadraticCurveTo(cx + ox + p[0], cy + oy + p[1], cx + ox + mx, cy + oy + my);
+        }
+        g.fillStyle = col; g.fill();
+      }
+    }
+  };
+  blob("#8d9663", 70, 9); blob("#6c5a40", 52, 8); blob("#56603f", 46, 9); blob("#3d3a2e", 30, 7);
+  g.globalAlpha = 0.07; g.fillStyle = "#000";                       // canvas weave
+  for (let i = 0; i < N; i += 3) { g.fillRect(i, 0, 1, N); g.fillRect(0, i, N, 1); }
+  g.globalAlpha = 0.16; g.fillStyle = "#d8d0b0";                    // wear and fading
+  for (let i = 0; i < 900; i++) g.fillRect(rnd() * N, rnd() * N, 1 + 3 * rnd(), 1 + 3 * rnd());
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / 20, 1 / 20); t.anisotropy = 4;
+  return t;
+}
+M.pouch.map = auscam();
+const POUCH = { x0: -10.6, x1: -1.2, top: -5.7, h: 14.5, zHi: -6, zLo: 10, band: 1.8 };
+{
+  const { x0, x1, top, h, zHi, zLo, band } = POUCH, L = x1 - x0;
+  // profile in the gun's z-y plane, from the photos: flat top over the high end for ~45% of the length, then a slope
+  // that ends a third of the way down the low end. Shape X is -z so that a +90 deg turn about y maps it onto the gun.
+  const zS = zLo - 0.55 * (zLo - zHi), drop = 0.33 * h, k = drop / (zLo - zS), shift = band * Math.hypot(1, k);
+  const zB = zS - (shift - band) / k;                               // where the band's lower edge leaves the flat top
+  const extrudeYZ = (pts, depth, opts, mat) => {
+    let v = pts.map(([z, y]) => new THREE.Vector2(-z, y));
+    if (THREE.ShapeUtils.isClockWise(v)) v = v.reverse();
+    const g = new THREE.ExtrudeGeometry(new THREE.Shape(v), Object.assign({ depth, bevelEnabled: false }, opts));
+    g.rotateY(Math.PI / 2); g.translate(x0 + (L - depth) / 2, 0, 0);
+    return add(new THREE.Mesh(g, mat), gun);
+  };
+  extrudeYZ([[zHi + 0.5, top - band], [zHi + 0.5, top - h + 0.5], [zLo - 0.5, top - h + 0.5], [zLo - 0.5, top - drop - shift], [zB, top - band]],
+    L - 1.0, { bevelEnabled: true, bevelThickness: 0.5, bevelSize: 0.5, bevelSegments: 3 }, M.pouch);   // soft bag
+  extrudeYZ([[zHi, top], [zS, top], [zLo, top - drop], [zLo, top - drop - shift], [zB, top - band], [zHi, top - band]],
+    L + 0.3, { bevelEnabled: true, bevelThickness: 0.12, bevelSize: 0.12, bevelSegments: 2 }, M.pouchTop); // hard top
+  box(x0 + 2.2, x1 - 2.2, top, top + 0.55, zHi + 0.6, zHi + 4.6, M.pouchTop);                          // latch
+  box(x0 + 2.8, x1 - 2.8, top + 0.55, top + 0.9, zHi + 0.6, zHi + 1.3, M.pouchTop);                    // latch hook
+}
+
 for (const s of [1, -1]) {
   rodBetween([23.6, -5.4, s * 1.0], [22.2, GROUND_Y + 0.5, s * 10], 0.42, M.steel);
   box(21, 23.4, GROUND_Y, GROUND_Y + 0.5, s * 10 - 0.9, s * 10 + 0.9, M.steel);
@@ -459,7 +528,7 @@ for (const m of [boreGas, portGas, cylGas, primer]) m.renderOrder = 7;
 const PHASES = [
   { s: 0.00, title: "Trigger pull", parts: ["trigger", "sear", "slide"],
     text: "The gun waits with the bolt held to the rear: it fires from an open bolt. Pressing the trigger lowers the sear out of its notch under the slide." },
-  { s: 0.07, title: "Feeding", parts: ["spring", "bolt", "belt"],
+  { s: 0.07, title: "Feeding", parts: ["spring", "bolt", "belt", "pouch"],
     text: "The return spring drives the slide, piston and bolt forward. The feed lug on top of the bolt catches the round waiting in the feed tray and pushes it forward out of its link." },
   { s: 0.20, title: "Chambering", parts: ["case", "bolt"],
     text: "The round is guided down and forward into the chamber. The extractor snaps over the rim as the bolt closes on it." },
@@ -477,7 +546,7 @@ const PHASES = [
     text: "Bolt and slide travel back together. The extractor pulls the empty case out of the chamber." },
   { s: 0.68, title: "Ejection", parts: ["case", "bolt", "link"],
     text: "As the case clears the chamber the spring-loaded ejector in the bolt face throws it out of the ejection port, low on the right side." },
-  { s: 0.75, title: "Belt feed", parts: ["lever", "pawl", "belt", "link", "buffer"],
+  { s: 0.75, title: "Belt feed", parts: ["lever", "pawl", "belt", "link", "buffer", "pouch"],
     text: "The roller on the bolt swings the feed lever in the feed cover. The feed pawl drags the belt across one place: the next round arrives in the tray and the empty link falls out to the right. The slide meets the buffer." },
   { s: 0.88, title: "Sear engagement", parts: ["trigger", "sear", "slide", "spring"],
     text: "With the trigger released the sear rises and catches the slide, holding the bolt open on a compressed spring. Keep the trigger pressed instead and the slide runs straight forward again: the gun fires automatic only." },
@@ -635,6 +704,7 @@ const LABELS = {
   lever: ["Feed lever", () => [-8, 3.15, 0.25 * pawlZ()], -66, -62],
   pawl: ["Feed pawl", () => [-2.4, 2.4, pawlZ()], 60, -60],
   belt: ["Belt", () => [-1.6, -3, -3.7], 70, 36],
+  pouch: ["200-round pouch", () => [POUCH.x1, POUCH.top - 9, 4], 70, 30],
   link: ["Link", () => S.linkFall ? (usedLink.visible ? [TRAY_X + 2.2, usedLink.position.y, usedLink.position.z] : null) : [TRAY_X + 2.2, TRAY_Y + 0.5, S.feed * PITCH], 84, -22],
   case: ["Cartridge case", () => S.spentOn ? (spent.visible ? [spent.position.x + 2, spent.position.y, spent.position.z] : null) : S.liveOn ? [S.lx + 2.2, S.ly, 0.4] : [TRAY_X + 3.4, TRAY_Y, 0.4], 70, 50],
   bullet: ["Bullet", () => S.bulletOn && S.bx < MUZZLE_X + 6 ? [S.bx + 5, 0, 0] : null, 0, -44],
@@ -758,7 +828,7 @@ function frame(now) {
 
 resize(); syncBody(); setPlaying(true);
 rafId = requestAnimationFrame(frame);
-window.__sim = { clock, S, PHASES, pose, apply, seek, stepPhase, setPlaying, setView, T_STRIP, T_EJECT };
+window.__sim = { clock, S, PHASES, pose, apply, seek, stepPhase, setPlaying, setView, T_STRIP, T_EJECT, camera, controls };
 
 window.addEventListener("pagehide", () => {
   cancelAnimationFrame(rafId); ro.disconnect(); controls.dispose();
