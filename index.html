@@ -384,7 +384,7 @@ Promise.all([loadImg(window.F89_ASSETS.tex), loadImg(window.F89_ASSETS.depth)]).
 // dust cover over the ejection port, low on the right of the receiver: the embossed plate at photo px x 805-985,
 // y 250-305 (0.0535 cm/px, breech at x 1010, bore axis at y 225). Hinged along its top edge; it swings out and up.
 const PH = { s: 0.0535, bx: 1010, ay: 225, W: 1958, H: 800 }, CPX = { x0: 805, x1: 985, y0: 250, y1: 305 };
-const COVER = { x0: (CPX.x0 - PH.bx) * PH.s, x1: (CPX.x1 - PH.bx) * PH.s, yTop: -(CPX.y0 - PH.ay) * PH.s, yBot: -(CPX.y1 - PH.ay) * PH.s, z: 2.68, open: -2.2 };
+const COVER = { x0: (CPX.x0 - PH.bx) * PH.s, x1: (CPX.x1 - PH.bx) * PH.s, yTop: -(CPX.y0 - PH.ay) * PH.s, yBot: -(CPX.y1 - PH.ay) * PH.s, z: 2.68, open: -1.1 };
 const coverHinge = new THREE.Group(); coverHinge.position.set((COVER.x0 + COVER.x1) / 2, COVER.yTop, COVER.z); gun.add(coverHinge);
 {
   const w = COVER.x1 - COVER.x0, h = COVER.yTop - COVER.yBot, g = new THREE.BoxGeometry(w, h, 0.12);
